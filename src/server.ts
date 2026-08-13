@@ -1,6 +1,18 @@
 import http from 'node:http';
+import pool from './config/connection.js';
 
 const PORT = process.env.PORT || 3000;
+
+async function testConnection() {
+  try {
+    const res = await pool.query('SELECT NOW()');
+    console.log('Conexão realizada em: ', res.rows[0].now)
+  } catch (error) {
+    console.error('Erro ao conectar ao PostgreSQL: ', error)
+  } finally {
+    await pool.end();
+  }
+}
 
 async function getBody(req: http.IncomingMessage) {
 
@@ -9,7 +21,7 @@ async function getBody(req: http.IncomingMessage) {
   for await (const chunk of req) {
     chunks.push(chunk);
   }
-  
+
   const body = Buffer.concat(chunks).toString();
 
   return JSON.parse(body);
@@ -71,4 +83,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}/`);
+  testConnection();
 });
