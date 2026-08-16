@@ -6,28 +6,27 @@ export interface AccountRequest {
   balance: number;
 }
 
-export class Account {
-  public async hasAccountId(id: string): Promise<boolean> {
-    const query = `SELECT id FROM accounts WHERE id = $1`;
-    const values = [id];
+class Account {
+  private queue = new Map<string, number>();
 
-    try {
-      const res = await pool.query(query, values);
-      return res.rows.length > 0;
-    } catch (error) {
-      console.error(error);
-    }
-    return false;
+  public hasAccountId(id: string): boolean {
+
+    return this.queue.has(id);
   }
 
   public create(id: string, balance: number): void {
+
+    this.queue.set(id, balance);
+
     const query = `INSERT INTO accounts (id, balance) values($1, $2)`;
     const values = [id, balance];
 
     try {
-      const res = pool.query(query, values);
+      pool.query(query, values);
     } catch (error) {
       console.error(error);
     }
   }
 }
+
+export const account = new Account();
