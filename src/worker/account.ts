@@ -10,12 +10,10 @@ class Account {
   private queue = new Map<string, number>();
 
   public hasAccountId(id: string): boolean {
-
     return this.queue.has(id);
   }
 
   public create(id: string, balance: number): void {
-
     this.queue.set(id, balance);
 
     const query = `INSERT INTO accounts (id, balance) values($1, $2)`;
@@ -26,6 +24,19 @@ class Account {
     } catch (error) {
       console.error(error);
     }
+  }
+
+  public async getById() {
+    const accountQuery = await pool.query(`
+      SELECT id, balance 
+      FROM accounts
+    `);
+
+    const transferQuery = await pool.query(`
+      id, payer_id, payee_id, amount, idempotency_key, status, failure_reason, created_at
+      FROM transfers
+      WHERE payer_id = $1
+    `, [accountQuery.rows[0].id]);
   }
 }
 

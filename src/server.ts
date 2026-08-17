@@ -127,11 +127,32 @@ const server = http.createServer(async (req, res) => {
       return res.end();
     }
 
-    res.writeHead(201, {
+    res.writeHead(200, {
       "Content-Type": "application/json",
     });
 
     return res.end(JSON.stringify(resTransfer));
+  }
+
+  if (
+    req.method === "GET" &&
+    parts[0] === "accounts" &&
+    parts[1] &&
+    parts[2] === "statement"
+  ) {
+    const accountId = parts[1];
+
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+    });
+
+    res.end(
+      JSON.stringify({
+        error: "Route not found",
+      }),
+    );
+
+    // buscar extrato da conta...
   }
 
   res.writeHead(404, {
