@@ -16,6 +16,7 @@ class Account {
   public create(id: string, balance: number): void {
     this.queue.set(id, balance);
 
+    console.log(id, balance)
     const query = `INSERT INTO accounts (id, balance) values($1, $2)`;
     const values = [id, balance];
 
@@ -26,17 +27,36 @@ class Account {
     }
   }
 
-  public async getById() {
-    const accountQuery = await pool.query(`
+  public async getById(id: string) {
+    try {
+      await pool.query("BEGIN TRANSACTION;");
+      const accountQuery = `
       SELECT id, balance 
       FROM accounts
-    `);
+      WHERE id = '${id}'
+     `;
 
-    const transferQuery = await pool.query(`
-      id, payer_id, payee_id, amount, idempotency_key, status, failure_reason, created_at
+      const accountResultQuery = await pool.query(accountQuery);
+
+      const transferQuery = `
+      SELECT id, payer_id as payerId, payee_id as payeeId, amount, idempotency_key as idempotencyKey, status, failure_reason as failureReason, created_at as createdAt
       FROM transfers
-      WHERE payer_id = $1
-    `, [accountQuery.rows[0].id]);
+      WHERE payer_id = '${accountResultQuery.rows[0].id}'
+     `;
+
+      const transferResultQuery = await pool.query(transferQuery);
+
+      await pool.query(" COMMIT;");
+
+      return {
+        accountId: accountResultQuery.rows[0]?.id,
+        balance: accountResultQuery.rows[0]?.balance,
+        transfers: transferResultQuery.rows,
+      };
+    } catch (error) {
+      await pool.query("ROLLBACK");
+      console.error(error);
+    }
   }
 }
 

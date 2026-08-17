@@ -8,7 +8,10 @@ const PORT = process.env.PORT || 3003;
 const transfer = new Transfer();
 
 function isAbsolute(n: number): boolean {
-  return n === Math.abs(n) || n <= 0;
+  let n2 = n;
+  if (n < 0) return false;
+  n === 0 ? n2 + 1 : n2 = n; 
+  return n2 === Math.abs(n2);
 }
 
 async function getBody(req: http.IncomingMessage) {
@@ -43,8 +46,10 @@ const server = http.createServer(async (req, res) => {
   // -POST /accounts
   if (req.method === "POST" && url.pathname === "/accounts") {
     const body = await getBody(req);
+    console.log(body)
 
-    if (!body.id || !body.balance || !isAbsolute(Number(body.balance))) {
+    if (!body.id || !body.balance || body.balance < 0) {
+      console.log('body.balance ', body.balance)
       res.writeHead(422, {
         "Content-Type": "application/json",
       });
@@ -142,14 +147,16 @@ const server = http.createServer(async (req, res) => {
   ) {
     const accountId = parts[1];
 
+    console.log(accountId);
+
     res.writeHead(200, {
       "Content-Type": "application/json",
     });
 
-    res.end(
-      JSON.stringify({
-        error: "Route not found",
-      }),
+    const accountWithTransfer = await account.getById(accountId);
+
+    return res.end(
+      JSON.stringify(accountWithTransfer),
     );
 
     // buscar extrato da conta...

@@ -62,7 +62,7 @@ export class Transfer {
 
       const failureReason = status === "failed" ? "insufficient_funds" : null;
 
-      //await pool.query("BEGIN TRANSACTION;");
+      await pool.query("BEGIN TRANSACTION;");
 
       const withdral = await pool.query(
         `        
@@ -95,10 +95,10 @@ export class Transfer {
 
       const res = await pool.query(updateTransferQuery);
 
-      // await pool.query(" COMMIT;");
+      await pool.query(" COMMIT;");
 
     } catch (error) {
-      // await pool.query("ROLLBACK");
+      await pool.query("ROLLBACK");
       console.error(error);
     }
   }
