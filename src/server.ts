@@ -10,7 +10,7 @@ const transfer = new Transfer();
 function isAbsolute(n: number): boolean {
   let n2 = n;
   if (n < 0) return false;
-  n === 0 ? n2 + 1 : n2 = n; 
+  n === 0 ? n2 + 1 : (n2 = n);
   return n2 === Math.abs(n2);
 }
 
@@ -46,10 +46,16 @@ const server = http.createServer(async (req, res) => {
   // -POST /accounts
   if (req.method === "POST" && url.pathname === "/accounts") {
     const body = await getBody(req);
-    console.log(body)
 
-    if (!body.id || !body.balance || body.balance < 0) {
-      console.log('body.balance ', body.balance)
+    if (
+      !body.id ||
+      body.balance < 0 ||
+      body.balance === null ||
+      body.balance === undefined ||
+      (!Number.isInteger(body.balance) && body.balance !== 0) ||
+      body.balance.toString().split(".").length !== 1
+    ) {
+      console.log("body.balance ", body.balance);
       res.writeHead(422, {
         "Content-Type": "application/json",
       });
@@ -84,7 +90,9 @@ const server = http.createServer(async (req, res) => {
       body.payerId === body.payeeId ||
       !body.amount ||
       !isAbsolute(body.amount) ||
-      !body.idempotencyKey
+      body.idempotencyKey === null ||
+      body.idempotencyKey === undefined ||
+      (Number.isInteger(body.amount) && body.amount !== 0)
     ) {
       res.writeHead(422, {
         "Content-Type": "application/json",
@@ -97,7 +105,7 @@ const server = http.createServer(async (req, res) => {
       payerId: body.payerId,
       payeeId: body.payeeId,
       amount: body.amount,
-      idempotencyKey: body.idempotencyKey,
+      idempotencyKey: body?.idempotencyKey,
     };
 
     const hasIdempotencyKey = transfer.hasIdempotencyKey(payload);
@@ -147,17 +155,21 @@ const server = http.createServer(async (req, res) => {
   ) {
     const accountId = parts[1];
 
-    console.log(accountId);
+    const accountWithTransfer = await account.getById(accountId);
+
+    if (!accountWithTransfer) {
+      res.writeHead(404, {
+        "Content-Type": "application/json",
+      });
+
+      res.end();
+    }
 
     res.writeHead(200, {
       "Content-Type": "application/json",
     });
 
-    const accountWithTransfer = await account.getById(accountId);
-
-    return res.end(
-      JSON.stringify(accountWithTransfer),
-    );
+    return res.end(JSON.stringify(accountWithTransfer));
 
     // buscar extrato da conta...
   }

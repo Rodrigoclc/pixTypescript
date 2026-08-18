@@ -38,6 +38,8 @@ class Account {
 
       const accountResultQuery = await pool.query(accountQuery);
 
+      if (accountResultQuery.rows.length === 0) return;
+
       const transferQuery = `
       SELECT id, payer_id as payerId, payee_id as payeeId, amount, idempotency_key as idempotencyKey, status, failure_reason as failureReason, created_at as createdAt
       FROM transfers
