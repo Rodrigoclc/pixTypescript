@@ -15,8 +15,7 @@ class Account {
 
   public create(id: string, balance: number): void {
     this.queue.set(id, balance);
-
-    console.log(id, balance)
+    
     const query = `INSERT INTO accounts (id, balance) values($1, $2)`;
     const values = [id, balance];
 

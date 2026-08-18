@@ -2,17 +2,12 @@ import http from "node:http";
 import pool from "./config/connection.js";
 import { account } from "./worker/account.js";
 import { ITransfer, Transfer } from "./worker/transfer.js";
+import vine from "@vinejs/vine";
+import { createAccountValidator } from "./validator/accountValidator.js";
 
 const PORT = process.env.PORT || 3003;
 
 const transfer = new Transfer();
-
-function isAbsolute(n: number): boolean {
-  let n2 = n;
-  if (n < 0) return false;
-  n === 0 ? n2 + 1 : (n2 = n);
-  return n2 === Math.abs(n2);
-}
 
 async function getBody(req: http.IncomingMessage) {
   const chunks = [];
@@ -26,16 +21,23 @@ async function getBody(req: http.IncomingMessage) {
   return JSON.parse(body);
 }
 
+export interface AccountCreate {
+  id: string,
+  balance: number
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "", `http://${req.headers.host}`);
   const parts = url.pathname.split("/").filter(Boolean);
 
+  let headers = {
+    statusCode: 200,
+    headers: { "Content-Type": "application/json" },
+  };
+
   // -GET /health
   if (req.method === "GET" && url.pathname === "/health") {
-    res.writeHead(200, {
-      "Content-Type": "application/json",
-    });
-
+    res.writeHead(headers.statusCode, headers.headers);
     return res.end(
       JSON.stringify({
         status: "ok",
@@ -47,59 +49,46 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && url.pathname === "/accounts") {
     const body = await getBody(req);
 
+    const payload: AccountCreate = {
+      id: body.id,
+      balance: body.balance,
+    };
+
     if (
-      !body.id ||
-      body.balance < 0 ||
-      body.balance === null ||
-      body.balance === undefined ||
-      (!Number.isInteger(body.balance) && body.balance !== 0) ||
-      body.balance.toString().split(".").length !== 1
+      payload.id === undefined ||
+      payload.id === null ||
+      payload.id.split("").length < 1 ||
+      payload.balance < 0 ||
+      payload.balance === null ||
+      payload.balance === undefined ||
+      payload.balance.toString().split(".").length > 1
     ) {
-      console.log("body.balance ", body.balance);
-      res.writeHead(422, {
-        "Content-Type": "application/json",
-      });
-      return res.end();
+      headers.statusCode = 422;
+      res.writeHead(headers.statusCode, headers.headers);
+      console.log(`-POST /accounts statusCode-${headers.statusCode} `, payload);
+      return res.end(JSON.stringify(payload));
     }
 
     const hasAccountId = account.hasAccountId(body.id);
     if (hasAccountId) {
-      res.writeHead(409, {
-        "Content-Type": "application/json",
-      });
+      headers.statusCode = 409;
+      res.writeHead(headers.statusCode, headers.headers);
+      console.log(`-POST /accounts statusCode-${headers.statusCode} `, payload);
 
-      return res.end();
+      return res.end(JSON.stringify(payload));
     }
 
-    account.create(body.id, body.balance);
+    account.create(payload.id, payload.balance);
 
-    res.writeHead(201, {
-      "Content-Type": "application/json",
-    });
-
-    return res.end();
+    headers.statusCode = 201;
+    res.writeHead(headers.statusCode, headers.headers);
+    console.log(`-POST /accounts statusCode-${headers.statusCode} `, payload);
+    return res.end(JSON.stringify(payload));
   }
 
   // -POST /transfers
   if (req.method === "POST" && url.pathname === "/transfers") {
     const body = await getBody(req);
-
-    if (
-      !body.payerId ||
-      !body.payeeId ||
-      body.payerId === body.payeeId ||
-      !body.amount ||
-      !isAbsolute(body.amount) ||
-      body.idempotencyKey === null ||
-      body.idempotencyKey === undefined ||
-      (Number.isInteger(body.amount) && body.amount !== 0)
-    ) {
-      res.writeHead(422, {
-        "Content-Type": "application/json",
-      });
-
-      return res.end();
-    }
 
     const payload: ITransfer = {
       payerId: body.payerId,
@@ -108,22 +97,40 @@ const server = http.createServer(async (req, res) => {
       idempotencyKey: body?.idempotencyKey,
     };
 
+    if (
+      !payload.payerId ||
+      !payload.payeeId ||
+      payload.payerId === payload.payeeId ||
+      (payload.amount < 0 ||
+      payload.amount === null ||
+      payload.amount === undefined ||
+      payload.amount.toString().split(".").length > 1) ||
+      payload.idempotencyKey === null ||
+      payload.idempotencyKey === undefined
+    ) {
+      headers.statusCode = 422;
+      res.writeHead(headers.statusCode, headers.headers);
+      console.log(`-POST /transfers statusCode-${headers.statusCode} `, payload);
+
+      return res.end(JSON.stringify(payload));
+    }
+
     const hasIdempotencyKey = transfer.hasIdempotencyKey(payload);
     if (hasIdempotencyKey) {
-      res.writeHead(200, {
-        "Content-Type": "application/json",
-      });
+      headers.statusCode = 200;
+      res.writeHead(headers.statusCode, headers.headers);
+      console.log(`-POST /transfers statusCode-${headers.statusCode} `, payload);
 
-      return res.end(JSON.stringify(hasIdempotencyKey));
+      return res.end(JSON.stringify(payload));
     }
 
     transfer.create(payload);
 
-    res.writeHead(201, {
-      "Content-Type": "application/json",
-    });
+    headers.statusCode = 201;
+    res.writeHead(headers.statusCode, headers.headers);
+    //console.log(`-POST /transfers statusCode-${headers.statusCode} `, payload);
 
-    return res.end();
+    return res.end(JSON.stringify({ status: "pending" }));
   }
 
   // -GET /transfers/id
@@ -133,20 +140,15 @@ const server = http.createServer(async (req, res) => {
     const resTransfer = await transfer.getById(transferId);
 
     if (!resTransfer) {
-      res.writeHead(404, {
-        "Content-Type": "application/json",
-      });
+      headers.statusCode = 404;
 
       return res.end();
     }
 
-    res.writeHead(200, {
-      "Content-Type": "application/json",
-    });
-
     return res.end(JSON.stringify(resTransfer));
   }
 
+  // -GET /accounts/id/statement
   if (
     req.method === "GET" &&
     parts[0] === "accounts" &&
@@ -158,25 +160,15 @@ const server = http.createServer(async (req, res) => {
     const accountWithTransfer = await account.getById(accountId);
 
     if (!accountWithTransfer) {
-      res.writeHead(404, {
-        "Content-Type": "application/json",
-      });
+      headers.statusCode = 404;
 
-      res.end();
+      return res.end();
     }
 
-    res.writeHead(200, {
-      "Content-Type": "application/json",
-    });
-
     return res.end(JSON.stringify(accountWithTransfer));
-
-    // buscar extrato da conta...
   }
 
-  res.writeHead(404, {
-    "Content-Type": "application/json",
-  });
+  headers.statusCode = 404;
 
   res.end(
     JSON.stringify({

@@ -30,11 +30,18 @@ export class Transfer {
     // const client = await pool.connect();
     try {
 
+      console.log('-------------------------transfer init-------------------------')
+      await pool.query("BEGIN TRANSACTION;");
       const accountId = await pool.query(`
         SELECT id FROM accounts
-        WHERE id = '${transfer.payerId}'`);
+        WHERE id IN ('${transfer.payerId}', '${transfer.payeeId}')`);
 
-      if (accountId.rows.length === 0) return;
+      
+      if (accountId.rows.length <= 1) {
+        console.log('accountId.rows ', accountId.rows);
+        await pool.query(" COMMIT;");
+        return;
+      }
 
       const queryTransfers = `
         INSERT INTO transfers (payer_id, payee_id, amount, idempotency_key)
@@ -43,6 +50,7 @@ export class Transfer {
       const valuesTransfers = Object.values(transfer);
 
       const transferId = await pool.query(queryTransfers, valuesTransfers);
+      console.log('transferId.rows ', transferId.rows);
 
       const queryGetBalance = `
         SELECT balance FROM accounts
@@ -56,29 +64,35 @@ export class Transfer {
         valuesQueryGetBalance,
       );
 
+      console.log('getBalanceResult.rows ', getBalanceResult.rows)
+
       const balance = getBalanceResult.rows[0].balance as number;
 
       const status = balance >= transfer.amount ? "completed" : "failed";
 
       const failureReason = status === "failed" ? "insufficient_funds" : null;
 
-      await pool.query("BEGIN TRANSACTION;");
-
       const withdral = await pool.query(
         `        
         UPDATE accounts
         SET balance = balance - $1
-        WHERE id = $2;`,
+        WHERE id = $2
+        RETURNING balance;`,
         [transfer.amount, transfer.payerId],
       );
+
+      console.log('withdral.rows ', withdral.rows);
 
       const deposit = await pool.query(
         `
         UPDATE accounts
         SET balance = balance + $1
-        WHERE id = $2;`,
+        WHERE id = $2
+        RETURNING balance;`,
         [transfer.amount, transfer.payeeId],
       );
+
+      console.log('deposit.rows ', deposit.rows);
 
       let updateTransferQuery = `
         UPDATE transfers
@@ -89,13 +103,16 @@ export class Transfer {
         updateTransferQuery = updateTransferQuery + `, failure_reason = '${failureReason}'`;
       }
 
-      const a = transferId.rows[0];
       updateTransferQuery =
-        updateTransferQuery + ` , processed_at = now() WHERE id = '${transferId.rows[0].id}';`;
+        updateTransferQuery + ` , processed_at = now() WHERE id = '${transferId.rows[0].id}' RETURNING status;`;
 
       const res = await pool.query(updateTransferQuery);
 
+      console.log('res.rows ', res.rows)
+
       await pool.query(" COMMIT;");
+
+      console.log('-------------------------transfer finish-------------------------')
 
     } catch (error) {
       await pool.query("ROLLBACK");
@@ -111,6 +128,7 @@ export class Transfer {
       return await pool.query(query, values);
     } catch (error) {
       console.error(error);
+      console.log('-------------------------transfer rollback-------------------------')
     }
   }
 }
